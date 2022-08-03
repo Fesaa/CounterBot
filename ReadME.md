@@ -43,7 +43,7 @@ ___
 
 | Command |  Aliases | Description |
 | :--- | :---: | :--- |
-| start | `None` | Initiate channel for Counting, CounterBot replies with '0' as confirmation |
+| start | `None` | Initiate channel for Counting, CounterBot replies with '0' as confirmation <br /> Usage: &start \< slowmode: bool\>. Slowmode defaults to `True`, if `True` will add a slowmode of one second to the channel.  |
 | stop | `None` | Remove channel for Counter, CounterBot replies with '👌' as confirmation |
 | scoreboard | `sc`, `lb`, `leaderboard` | Display leaderboard for a Counter channel. |
 

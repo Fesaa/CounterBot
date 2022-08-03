@@ -100,6 +100,8 @@ class CounterBotContext(commands.Context):
 async def _start(ctx: CounterBotContext, slowmode: bool = True):
     """
     Initiate channel for Counting, CounterBot replies with '0' as confirmation
+    :param slowmode: when True, adds a slowmode of one second to the channel, defaults to True
+    :type slowmode: bool, optional
     """
     if ctx.channel.id in ctx.bot.channels:
         return
@@ -137,7 +139,8 @@ async def _stop(ctx: CounterBotContext):
 async def _scoreboard(ctx: CounterBotContext, channel: typing.Optional[discord.TextChannel]):
     """
     Display leaderboard for a Counter channel.
-    param channel: defaults to ctx.channel
+    :param channel: the channel to request the scoreboard of, defaults to ctx.channel
+    :type channel: discord.TextChannel, optional
     """
 
     channel = channel or ctx.channel
