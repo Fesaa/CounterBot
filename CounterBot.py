@@ -38,7 +38,7 @@ class CounterBot(commands.Bot):
         self.add_command(_stop)
 
     async def on_ready(self) -> None:
-        print(f"Bot Ready: {self.user.name}")
+        print(f"[{discord.utils.utcnow()}] Bot Ready: {self.user.name}")
 
     async def on_message(self, msg: discord.Message, /) -> None:
 
@@ -103,7 +103,7 @@ async def _start(ctx: CounterBotContext, slowmode: bool = True):
     :param slowmode: when True, adds a slowmode of one second to the channel, defaults to True
     :type slowmode: bool, optional
     """
-    if ctx.channel.id in ctx.bot.channels:
+    if ctx.channel.id in ctx.bot.channels: # Game already running
         return
     
     if slowmode:
@@ -123,7 +123,7 @@ async def _stop(ctx: CounterBotContext):
     Remove channel for Counter, CounterBot replies with '👌' as confirmation
     """
 
-    if ctx.channel.id not in ctx.bot.channels:
+    if ctx.channel.id not in ctx.bot.channels: # No game to stop
         return
 
     try:
@@ -135,7 +135,7 @@ async def _stop(ctx: CounterBotContext):
     ctx.bot.db.commit()
     await ctx.send('\U0001f44c')
 
-@commands.command(name='leaderboard', aliases=['lb', 'sc', 'leaderboard'])
+@commands.command(name='scoreboard', aliases=['lb', 'sc', 'leaderboard'])
 async def _scoreboard(ctx: CounterBotContext, channel: typing.Optional[discord.TextChannel]):
     """
     Display leaderboard for a Counter channel.

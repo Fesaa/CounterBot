@@ -17,7 +17,7 @@ pip install -r requirements.txt
 ```
 Open CounterBot.py and edit lines 10 to 13 to your needs.
 
-As displayed there, you need a MySQL server; with a database named `counter` and two tables.
+As displayed there, you need a MySQL server; with a database with two tables.
 ```
 CREATE TABLE `counter` (
   `channel_id` bigint unsigned NOT NULL,
