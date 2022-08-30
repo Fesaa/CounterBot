@@ -1,13 +1,10 @@
 import typing
 import discord
-
-import mysql.connector as mysql
+import asqlite
 
 from discord.ext import commands
-from mysql.connector.cursor import MySQLCursor
 
 # Edit before running the file
-DATABASE_INFO: dict = {"host": ..., "database": ..., "user": ..., "password": ...}
 TOKEN: str = ...  # type: ignore
 BOT_ID: int = ...  # type: ignore
 COMMAND_PREFIX: str = ...  # type: ignore
@@ -19,9 +16,6 @@ class CounterBot(commands.Bot):
         intents.message_content = True
         intents.members = True
 
-        self.db: mysql.MySQLConnection = mysql.connect(**DATABASE_INFO)
-        self.cursor: MySQLCursor = self.db.cursor()
-
         super().__init__(
             command_prefix=COMMAND_PREFIX,
             intents=intents,
@@ -29,15 +23,33 @@ class CounterBot(commands.Bot):
             case_insensitive=True,
         )
 
-    @property
-    def channels(self) -> list:
+    async def channels(self) -> list:
         """
         Returns all active Counter channels
         """
-        self.cursor.execute("SELECT `channel_id` FROM `counter`")
-        return list(i[0] for i in self.cursor.fetchall())
+        async with asqlite.connect('CounterBot.db') as conn:
+            async with conn.cursor() as cursor:
+                res = await cursor.execute("SELECT channel_id FROM counter;")
+                channels = await res.fetchall()
+        return list(i[0] for i in channels)
 
     async def setup_hook(self) -> None:
+        async with asqlite.connect('CounterBot.db') as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""CREATE TABLE IF NOT EXISTS counter (
+                                        channel_id bigint unsigned NOT NULL,
+                                        current_count int DEFAULT NULL,
+                                        last_user_id bigint DEFAULT NULL,
+                                        PRIMARY KEY (channel_id)
+                                        );""")
+                await cursor.execute("""CREATE TABLE IF NOT EXISTS leaderboard (
+                                        channel_id bigint unsigned NOT NULL,
+                                        user_id bigint NOT NULL,
+                                        score bigint DEFAULT NULL,
+                                        PRIMARY KEY (channel_id,user_id)
+                                        );""")
+                await conn.commit()
+
         self.add_command(_scoreboard)
         self.add_command(_start)
         self.add_command(_stop)
@@ -52,17 +64,16 @@ class CounterBot(commands.Bot):
 
         await self.process_commands(msg)
 
-        if msg.channel.id not in self.channels:
+        if msg.channel.id not in await self.channels():
             return
 
         if not msg.content.isdigit():
             return await msg.delete()  # Non numerical messages are deleted
 
-        self.cursor.execute(
-            "SELECT `count`, `last_user_id` FROM `counter` WHERE `channel_id` = %s;",
-            (msg.channel.id,),
-        )
-        (count, last_user_id) = self.cursor.fetchone()
+        async with asqlite.connect('CounterBot.db') as conn:
+            async with conn.cursor() as cursor:
+                res = await cursor.execute("SELECT current_count, last_user_id FROM counter WHERE channel_id = ?;", (msg.channel.id,))
+                (count, last_user_id) = await res.fetchone()
 
         if last_user_id == msg.author.id:  # Not allowed to count by yourself
             return await msg.delete()
@@ -70,16 +81,13 @@ class CounterBot(commands.Bot):
         sub_count = int(msg.content)
 
         if count + 1 == sub_count:
-            self.cursor.execute(
-                "INSERT INTO `counter` (`channel_id`, `count`, `last_user_id`) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE `count` = `count` + 1, `last_user_id` = %s;",
-                (msg.channel.id, count + 1, msg.author.id, msg.author.id),
-            )
-            self.db.commit()
-            self.cursor.execute(
-                "INSERT INTO `leaderboard` (`channel_id`, `user_id`, `score`) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE `score` = `score` + 1;",
-                (msg.channel.id, msg.author.id, 1),
-            )
-            self.db.commit()
+            async with asqlite.connect('CounterBot.db') as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("INSERT INTO counter (channel_id, current_count, last_user_id) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET current_count = current_count + 1, last_user_id = ?;", 
+                                            (msg.channel.id, count + 1, msg.author.id, msg.author.id))
+                    await cursor.execute("INSERT INTO leaderboard (channel_id, user_id, score) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET score = score + 1;",
+                                    (msg.channel.id, msg.author.id, 1),)
+                    await conn.commit()
         else:
             await msg.delete()  # Counting increments by one
 
@@ -121,7 +129,7 @@ async def _start(ctx: CounterBotContext, slowmode: bool = True):
     :param slowmode: when True, adds a slowmode of one second to the channel, defaults to True
     :type slowmode: bool, optional
     """
-    if ctx.channel.id in ctx.bot.channels:  # Game already running
+    if ctx.channel.id in await ctx.bot.channels():  # Game already running
         return
 
     if slowmode:
@@ -132,12 +140,12 @@ async def _start(ctx: CounterBotContext, slowmode: bool = True):
             )
         except discord.errors.Forbidden:
             pass
-
-    ctx.bot.cursor.execute(
-        "INSERT `counter` (`channel_id`, `count`, `last_user_id`) VALUES (%s, %s, %s)",
-        (ctx.channel.id, 0, ctx.bot.user.id),
-    )
-    ctx.bot.db.commit()
+    
+    async with asqlite.connect('CounterBot.db') as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("INSERT INTO counter (channel_id, current_count, last_user_id) VALUES (?, ?, ?);",
+                                    (ctx.channel.id, 0, ctx.bot.user.id),)
+            await conn.commit()
     await ctx.send("0")
 
 
@@ -148,7 +156,7 @@ async def _stop(ctx: CounterBotContext):
     Remove channel for Counter, CounterBot replies with '👌' as confirmation
     """
 
-    if ctx.channel.id not in ctx.bot.channels:  # No game to stop
+    if ctx.channel.id not in await ctx.bot.channels():  # No game to stop
         return
 
     try:
@@ -158,10 +166,11 @@ async def _stop(ctx: CounterBotContext):
     except discord.errors.Forbidden:
         pass
 
-    ctx.bot.cursor.execute(
-        "DELETE FROM `counter` WHERE `channel_id` = %s;", (ctx.channel.id,)
-    )
-    ctx.bot.db.commit()
+    async with asqlite.connect('CounterBot.db') as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("DELETE FROM counter WHERE channel_id = ?;",
+                                    (ctx.channel.id,),)
+            await conn.commit()
     await ctx.send("\U0001f44c")
 
 
@@ -177,11 +186,11 @@ async def _scoreboard(
 
     channel = channel or ctx.channel
 
-    ctx.bot.cursor.execute(
-        "SELECT `user_id`,`score` FROM `leaderboard` WHERE `channel_id` = %s ORDER BY score DESC LIMIT 15;",
-        (channel.id,),
-    )
-    scores = ctx.bot.cursor.fetchall()
+    async with asqlite.connect('CounterBot.db') as conn:
+        async with conn.cursor() as cursor:
+            res = await cursor.execute("SELECT user_id,score FROM leaderboard WHERE channel_id = ? ORDER BY score DESC LIMIT 15;",
+                                    (channel.id,),)
+            scores = await res.fetchall()
 
     if not scores:
         return
@@ -198,11 +207,11 @@ async def _scoreboard(
             author_score = True
 
     if not author_score:  # If author isn't in the top 15 -> add extra line with score
-        ctx.bot.cursor.execute(
-            "SELECT `score` FROM `leaderboard` WHERE `channel_id`  = %s AND `user_id` = %s;",
-            (ctx.channel.id, ctx.author.id),
-        )
-        score = ctx.bot.cursor.fetchone()
+        async with asqlite.connect('CounterBot.db') as conn:
+            async with conn.cursor() as cursor:
+                res = await cursor.execute("SELECT score FROM leaderboard WHERE channel_id  = ? AND user_id = ?;",
+                                    (ctx.channel.id, ctx.author.id))
+                score = await res.fetchone()
 
         if score:
             desc += f"Your score: {score}"

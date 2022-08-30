@@ -15,24 +15,8 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 ```
-Open CounterBot.py and edit lines 10 to 13 to your needs.
-
-As displayed there, you need a MySQL server; with a database with two tables.
-```
-CREATE TABLE `counter` (
-  `channel_id` bigint unsigned NOT NULL,
-  `count` int DEFAULT NULL,
-  `last_user_id` bigint DEFAULT NULL,
-  PRIMARY KEY (`channel_id`)
-);
-CREATE TABLE `leaderboard` (
-  `channel_id` bigint unsigned NOT NULL,
-  `user_id` bigint NOT NULL,
-  `score` bigint DEFAULT NULL,
-  PRIMARY KEY (`channel_id`,`user_id`)
-);
-```
-At last, run the python file!
+Open CounterBot.py and edit lines 8 to 10 to your needs.
+And run the python file!
 ```
 python3 CounterBot.py
 ```
