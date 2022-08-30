@@ -3,7 +3,7 @@ Extremely simple Counter bot written in python with discord.py. (exact commit: `
 Supports multiple channels, and has a simply scoreboard counter. 
 ___
 ## Installing
-Clone, venv, pip, MySQL and run!
+Clone, venv, pip and run!
 ```
 cd <your folder>
 
